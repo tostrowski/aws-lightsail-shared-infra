@@ -1,4 +1,4 @@
-name: Deploy shared Lightsail database
+name: 🚀 Deploy shared Lightsail database
 
 on:
   workflow_dispatch:

@@ -1,4 +1,4 @@
-name: Set database access
+name: 🔐 Set database access
 
 on:
   workflow_dispatch:

@@ -16,12 +16,14 @@ Java + Gradle AWS CDK project for one shared Lightsail PostgreSQL database in AW
 
 ## Workflows
 
-- `Bootstrap CDK`: creates/updates the CDK bootstrap resources in `eu-west-1`.
-- `Deploy shared Lightsail database`: deploys the CDK stack.
-- `Initialize logical databases`: temporarily makes the DB public, creates/updates app DBs and users, stores app credentials in Secrets Manager, then makes the DB private again.
-- `Set database access`: manually toggles public/private access.
-- `Database status`: prints current Lightsail DB status.
-- `Create database snapshot`: creates a manual database snapshot.
+- `🧰 Bootstrap CDK`: creates/updates the CDK bootstrap resources in `eu-west-1`.
+- `🚀 Deploy shared Lightsail database`: deploys the CDK stack.
+- `🗄️ Initialize logical databases`: temporarily makes the DB public, creates/updates app DBs and users, stores app credentials in Secrets Manager, then makes the DB private again.
+- `🔐 Set database access`: manually toggles public/private access.
+- `🔎 Database status`: prints current Lightsail DB status.
+- `📸 Create database snapshot`: creates a manual database snapshot.
+
+To run any workflow, open the repository in GitHub, select **Actions**, select the named workflow in the left sidebar, select **Run workflow**, choose the required inputs, and confirm with **Run workflow**.
 
 ## Required GitHub Secrets
 
@@ -114,11 +116,7 @@ git push -u origin main
 
 ### 5. Bootstrap CDK
 
-Run the GitHub Actions workflow:
-
-```text
-Bootstrap CDK
-```
+Run the GitHub Actions workflow `🧰 Bootstrap CDK`: open **GitHub → Actions → 🧰 Bootstrap CDK**, select **Run workflow**, and confirm with **Run workflow**.
 
 This workflow runs:
 
@@ -130,11 +128,7 @@ It creates or updates the CDK bootstrap resources in `eu-west-1`, including the 
 
 ### 6. Deploy the database
 
-Run the GitHub Actions workflow:
-
-```text
-Deploy shared Lightsail database
-```
+Run the GitHub Actions workflow `🚀 Deploy shared Lightsail database`: open **GitHub → Actions → 🚀 Deploy shared Lightsail database**, select **Run workflow**, keep or change the `blueprint_id`, and confirm with **Run workflow**.
 
 Use the default `blueprint_id` unless you intentionally want another PostgreSQL version:
 
@@ -144,11 +138,7 @@ postgres_18
 
 ### 7. Wait for availability
 
-Run:
-
-```text
-Database status
-```
+Run the GitHub Actions workflow `🔎 Database status`: open **GitHub → Actions → 🔎 Database status**, select **Run workflow**, and confirm with **Run workflow**.
 
 Wait until the database state is:
 
@@ -158,11 +148,7 @@ available
 
 ### 8. Initialize logical databases
 
-Run:
-
-```text
-Initialize logical databases
-```
+Run the GitHub Actions workflow `🗄️ Initialize logical databases`: open **GitHub → Actions → 🗄️ Initialize logical databases**, select **Run workflow**, and confirm with **Run workflow**.
 
 The workflow will:
 
@@ -175,11 +161,7 @@ The workflow will:
 
 ### 9. Verify private access
 
-Run:
-
-```text
-Database status
-```
+Run the GitHub Actions workflow `🔎 Database status` again: open **GitHub → Actions → 🔎 Database status**, select **Run workflow**, and confirm with **Run workflow**.
 
 Confirm:
 
@@ -225,11 +207,7 @@ Both apps use the same Lightsail database endpoint and port, but different datab
 
 ### 11. Create a snapshot
 
-Before putting production data into the database, run:
-
-```text
-Create database snapshot
-```
+Before putting production data into the database, run the GitHub Actions workflow `📸 Create database snapshot`: open **GitHub → Actions → 📸 Create database snapshot**, select **Run workflow**, optionally provide `snapshot_name`, and confirm with **Run workflow**.
 
 After that, deploy each app's own schema migrations from its app repository.
 

@@ -1,4 +1,4 @@
-name: Database status
+name: 🔎 Database status
 
 on:
   workflow_dispatch:

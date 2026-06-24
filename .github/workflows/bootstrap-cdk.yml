@@ -1,4 +1,4 @@
-name: Bootstrap CDK
+name: 🧰 Bootstrap CDK
 
 on:
   workflow_dispatch:
