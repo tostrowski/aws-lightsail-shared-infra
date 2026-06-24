@@ -259,7 +259,7 @@ Use this only for temporary administrative access from your local machine. The c
 1. Make the database public.
 2. Wait until the access change is complete.
 3. Connect with `psql` and perform the required work.
-4. Disconnect and clear credentials from the local shell.
+4. Disconnect; the connection script exits and discards the retrieved credentials.
 5. Make the database private again, even if the database work failed.
 6. Verify that private access has been restored.
 
@@ -283,52 +283,16 @@ publiclyAccessible = true
 
 Do not start the local connection until both values are confirmed.
 
-#### 2. Retrieve the connection settings
+#### 2. Connect and perform the work
 
-The following commands require an authenticated AWS CLI session with `lightsail:GetRelationalDatabase` and `secretsmanager:GetSecretValue` permissions, plus `psql` and `jq` installed locally.
+The connection script requires an authenticated AWS CLI session with `lightsail:GetRelationalDatabase` and `secretsmanager:GetSecretValue` permissions, plus `psql` and `jq` installed locally. It verifies that the database is available and public, retrieves the selected application's credentials, and starts a TLS-enabled `psql` session.
 
-Choose the application database to connect to:
-
-```bash
-export AWS_REGION=eu-west-1
-export LIGHTSAIL_DB_NAME=shared-postgres
-export DB_SECRET_ID=/lightsail/shared-postgres/elfico/app-user
-# For czyjafakturka, use:
-# export DB_SECRET_ID=/lightsail/shared-postgres/czyjafakturka/app-user
-```
-
-Retrieve the public endpoint and the selected application's credentials:
+Connect to the required application database:
 
 ```bash
-export DB_HOST="$(aws lightsail get-relational-database \
-  --region "$AWS_REGION" \
-  --relational-database-name "$LIGHTSAIL_DB_NAME" \
-  --query 'relationalDatabase.masterEndpoint.address' \
-  --output text)"
-
-export DB_PORT="$(aws lightsail get-relational-database \
-  --region "$AWS_REGION" \
-  --relational-database-name "$LIGHTSAIL_DB_NAME" \
-  --query 'relationalDatabase.masterEndpoint.port' \
-  --output text)"
-
-DB_SECRET_JSON="$(aws secretsmanager get-secret-value \
-  --region "$AWS_REGION" \
-  --secret-id "$DB_SECRET_ID" \
-  --query SecretString \
-  --output text)"
-
-export PGDATABASE="$(jq -r '.database' <<<"$DB_SECRET_JSON")"
-export PGUSER="$(jq -r '.username' <<<"$DB_SECRET_JSON")"
-export PGPASSWORD="$(jq -r '.password' <<<"$DB_SECRET_JSON")"
-```
-
-#### 3. Connect and perform the work
-
-Connect with TLS enabled:
-
-```bash
-psql "host=$DB_HOST port=$DB_PORT dbname=$PGDATABASE user=$PGUSER sslmode=require"
+./scripts/connect-to-database.sh elfico
+# or
+./scripts/connect-to-database.sh czyjafakturka
 ```
 
 Run the required SQL commands. Use the app-specific user for routine work; do not use the master user unless the operation specifically requires administrative privileges.
@@ -339,19 +303,13 @@ Exit `psql` with:
 \q
 ```
 
-#### 4. Clear local credentials
+The script passes the password only to the `psql` process, so no credentials are exported into the current shell.
 
-Remove the retrieved credentials from the current shell:
-
-```bash
-unset DB_SECRET_JSON DB_HOST DB_PORT PGDATABASE PGUSER PGPASSWORD
-```
-
-#### 5. Make the database private again
+#### 3. Make the database private again
 
 This step is required even if the `psql` connection or SQL work failed. In GitHub, open **Actions → 🔐 Set database access → Run workflow**, select `private`, and run the workflow.
 
-#### 6. Verify private access
+#### 4. Verify private access
 
 Run **Actions → 🔎 Database status → Run workflow** until it reports:
 
