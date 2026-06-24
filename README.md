@@ -253,7 +253,26 @@ Both apps use the same Lightsail database endpoint and port, but different datab
 
 ### 11. Create a snapshot
 
-Before putting production data into the database, run the GitHub Actions workflow `📸 Create database snapshot`: open **GitHub → Actions → 📸 Create database snapshot**, select **Run workflow**, optionally provide `snapshot_name`, and confirm with **Run workflow**.
+A snapshot is a point-in-time copy of the entire managed PostgreSQL database. It provides a recovery point if a schema migration, deployment, administrative command, or application bug damages the database. Lightsail restores a snapshot by creating a new database from it; it does not roll back the existing database in place. After a restore, update the applications to use the restored database's endpoint.
+
+Create the first snapshot after initialization and before applying the applications' schema migrations. At that point it records a known-good database with the logical databases, users, and permissions configured. It will not contain production data if none has been written yet, so it is only a clean baseline—not a production-data backup.
+
+Also create a snapshot:
+
+- immediately before a risky or destructive schema migration
+- before a major application release that changes stored data
+- before deleting, recreating, or significantly reconfiguring the database
+- when you need a longer-lived recovery point independent of routine backups
+
+Run the GitHub Actions workflow `📸 Create database snapshot`: open **GitHub → Actions → 📸 Create database snapshot**, select **Run workflow**, optionally provide a descriptive `snapshot_name`, and confirm with **Run workflow**. For example:
+
+```text
+shared-postgres-before-elfico-migration-20260624
+```
+
+Wait until the snapshot is available before starting the risky operation. Creating a snapshot of this standard, non-high-availability database can make it unavailable for a short period, so schedule production snapshots during a maintenance window.
+
+A snapshot is a recovery measure, not a substitute for testing migrations or maintaining an appropriate recurring backup and retention policy.
 
 After that, deploy each app's own schema migrations from its app repository.
 
