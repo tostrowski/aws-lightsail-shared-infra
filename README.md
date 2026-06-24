@@ -16,6 +16,7 @@ Java + Gradle AWS CDK project for one shared Lightsail PostgreSQL database in AW
 
 ## Workflows
 
+- `Bootstrap CDK`: creates/updates the CDK bootstrap resources in `eu-west-1`.
 - `Deploy shared Lightsail database`: deploys the CDK stack.
 - `Initialize logical databases`: temporarily makes the DB public, creates/updates app DBs and users, stores app credentials in Secrets Manager, then makes the DB private again.
 - `Set database access`: manually toggles public/private access.
@@ -50,13 +51,7 @@ export GITHUB_OWNER="your-github-user-or-org"
 export GITHUB_REPO="aws-lightsail-shared-infra"
 ```
 
-### 2. Bootstrap CDK
-
-```bash
-cdk bootstrap aws://$AWS_ACCOUNT_ID/eu-west-1
-```
-
-### 3. Create the GitHub OIDC role
+### 2. Create the GitHub OIDC role
 
 If the GitHub OIDC provider does not exist in your AWS account, create it first:
 
@@ -104,7 +99,9 @@ sts:AssumeRole
 
 Tighten this policy after the first successful deployment.
 
-### 4. Configure GitHub
+This is the one bootstrap dependency that cannot be solved by assuming the same role from GitHub Actions: the role must exist before GitHub can assume it. If you want zero local AWS CLI commands, create this role once in the AWS Console or use temporary AWS access keys in GitHub for a one-time admin setup workflow.
+
+### 3. Configure GitHub
 
 In GitHub:
 
@@ -121,7 +118,7 @@ AWS_ROLE_ARN
 LIGHTSAIL_MASTER_USER_PASSWORD
 ```
 
-### 5. Push the repository
+### 4. Push the repository
 
 If this folder is not a git repo yet:
 
@@ -133,6 +130,22 @@ git branch -M main
 git remote add origin git@github.com:<github-owner>/aws-lightsail-shared-infra.git
 git push -u origin main
 ```
+
+### 5. Bootstrap CDK
+
+Run the GitHub Actions workflow:
+
+```text
+Bootstrap CDK
+```
+
+This workflow runs:
+
+```bash
+cdk bootstrap aws://<account-id>/eu-west-1
+```
+
+It creates or updates the CDK bootstrap resources in `eu-west-1`, including the `CDKToolkit` CloudFormation stack and the `/cdk-bootstrap/hnb659fds/version` SSM parameter that CDK deploys expect.
 
 ### 6. Deploy the database
 
