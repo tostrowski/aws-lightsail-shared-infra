@@ -47,47 +47,26 @@ Do not commit this password. The apps must not use the master user.
 ```bash
 export AWS_REGION=eu-west-1
 export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-export GITHUB_OWNER="your-github-user-or-org"
+export GITHUB_OWNER="tostrowski"
 export GITHUB_REPO="aws-lightsail-shared-infra"
 ```
 
 ### 2. Create the GitHub OIDC role
 
-If the GitHub OIDC provider does not exist in your AWS account, create it first:
+Run the setup script:
 
 ```bash
-aws iam create-open-id-connect-provider \
-  --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+./scripts/create-github-oidc-role.sh
 ```
 
-Create a trust policy for the repo and `production` environment:
+The script creates or updates:
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:<github-owner>/<repo>:environment:production"
-        }
-      }
-    }
-  ]
-}
-```
+- GitHub OIDC provider for `token.actions.githubusercontent.com`
+- IAM role `github-lightsail-shared-infra`
+- role trust policy for `repo:<github-owner>/aws-lightsail-shared-infra:environment:production`
+- inline rollout policy
 
-Create the role and attach permissions for the initial rollout:
+The initial rollout policy allows:
 
 ```text
 cloudformation:*
@@ -96,6 +75,8 @@ secretsmanager:*
 ssm:GetParameter
 sts:AssumeRole
 ```
+
+The script prints the IAM role ARN to use as the GitHub environment secret `AWS_ROLE_ARN`.
 
 Tighten this policy after the first successful deployment.
 
