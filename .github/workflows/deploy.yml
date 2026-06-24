@@ -1,0 +1,44 @@
+name: Deploy shared Lightsail database
+
+on:
+  workflow_dispatch:
+    inputs:
+      blueprint_id:
+        description: "Lightsail PostgreSQL blueprint id"
+        required: true
+        default: "postgres_18"
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - run: npm install -g aws-cdk@2.1128.1
+
+      - name: Deploy
+        env:
+          LIGHTSAIL_MASTER_USER_PASSWORD: ${{ secrets.LIGHTSAIL_MASTER_USER_PASSWORD }}
+        run: |
+          cdk deploy LightsailSharedPostgresStack \
+            --require-approval never \
+            --context blueprintId="${{ inputs.blueprint_id }}" \
+            --parameters MasterUserPassword="$LIGHTSAIL_MASTER_USER_PASSWORD"

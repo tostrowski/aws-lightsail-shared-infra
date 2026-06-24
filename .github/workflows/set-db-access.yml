@@ -1,0 +1,44 @@
+name: Set database access
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "public or private"
+        required: true
+        default: "private"
+        type: choice
+        options:
+          - private
+          - public
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  set-access:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: eu-west-1
+      LIGHTSAIL_DB_NAME: shared-postgres
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Update public access
+        run: |
+          if [ "${{ inputs.mode }}" = "public" ]; then
+            access_flag="--publicly-accessible"
+          else
+            access_flag="--no-publicly-accessible"
+          fi
+
+          aws lightsail update-relational-database \
+            --region "$AWS_REGION" \
+            --relational-database-name "$LIGHTSAIL_DB_NAME" \
+            "$access_flag" \
+            --apply-immediately

@@ -1,0 +1,28 @@
+name: Database status
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: eu-west-1
+      LIGHTSAIL_DB_NAME: shared-postgres
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Show database status
+        run: |
+          aws lightsail get-relational-database \
+            --region "$AWS_REGION" \
+            --relational-database-name "$LIGHTSAIL_DB_NAME" \
+            --query 'relationalDatabase.{name:name,state:state,publiclyAccessible:publiclyAccessible,blueprintId:relationalDatabaseBlueprintId,bundleId:relationalDatabaseBundleId,endpoint:masterEndpoint.address,port:masterEndpoint.port,backupRetention:backupRetentionEnabled}' \
+            --output table

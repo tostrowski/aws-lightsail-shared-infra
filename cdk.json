@@ -1,0 +1,17 @@
+{
+  "app": "./gradlew -q run",
+  "context": {
+    "databaseName": "shared-postgres",
+    "availabilityZone": "eu-west-1a",
+    "blueprintId": "postgres_18",
+    "bundleId": "micro_2_0",
+    "masterDatabaseName": "postgres",
+    "masterUsername": "postgres_admin",
+    "publiclyAccessible": false,
+    "backupRetention": true,
+    "preferredBackupWindow": "02:00-02:30",
+    "preferredMaintenanceWindow": "sun:03:00-sun:03:30",
+    "elficoDatabaseName": "elfico",
+    "czyjafakturkaDatabaseName": "czyjafakturka"
+  }
+}

@@ -1,0 +1,38 @@
+name: Create database snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_name:
+        description: "Snapshot name. Leave empty to use timestamp."
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: eu-west-1
+      LIGHTSAIL_DB_NAME: shared-postgres
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Create snapshot
+        run: |
+          snapshot_name="${{ inputs.snapshot_name }}"
+          if [ -z "$snapshot_name" ]; then
+            snapshot_name="${LIGHTSAIL_DB_NAME}-$(date -u +%Y%m%d%H%M%S)"
+          fi
+
+          aws lightsail create-relational-database-snapshot \
+            --region "$AWS_REGION" \
+            --relational-database-name "$LIGHTSAIL_DB_NAME" \
+            --relational-database-snapshot-name "$snapshot_name"

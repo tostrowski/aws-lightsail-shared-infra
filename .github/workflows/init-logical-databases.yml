@@ -1,0 +1,66 @@
+name: Initialize logical databases
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: eu-west-1
+      LIGHTSAIL_DB_NAME: shared-postgres
+      MASTER_DATABASE_NAME: postgres
+      MASTER_USERNAME: postgres_admin
+      ELFICO_DATABASE_NAME: elfico
+      CZYJAFAKTURKA_DATABASE_NAME: czyjafakturka
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client jq
+
+      - name: Make database public temporarily
+        run: |
+          aws lightsail update-relational-database \
+            --region "$AWS_REGION" \
+            --relational-database-name "$LIGHTSAIL_DB_NAME" \
+            --publicly-accessible \
+            --apply-immediately
+
+      - name: Wait for database
+        run: |
+          for attempt in {1..60}; do
+            state="$(aws lightsail get-relational-database \
+              --region "$AWS_REGION" \
+              --relational-database-name "$LIGHTSAIL_DB_NAME" \
+              --query 'relationalDatabase.state' \
+              --output text)"
+            if [ "$state" = "available" ]; then
+              exit 0
+            fi
+            echo "Database state is $state; waiting..."
+            sleep 10
+          done
+          exit 1
+
+      - name: Initialize databases and users
+        run: bash scripts/init-logical-databases.sh
+
+      - name: Return database to private access
+        if: always()
+        run: |
+          aws lightsail update-relational-database \
+            --region "$AWS_REGION" \
+            --relational-database-name "$LIGHTSAIL_DB_NAME" \
+            --no-publicly-accessible \
+            --apply-immediately
