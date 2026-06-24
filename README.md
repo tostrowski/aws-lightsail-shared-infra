@@ -171,26 +171,18 @@ publiclyAccessible = false
 
 ### 10. Connect applications
 
-Each app should use only its own Secrets Manager secret.
+Each app should use only its own Secrets Manager secret. Do not copy the password into `application.yaml`, the repository, or a GitHub variable.
 
 `elfico`:
 
-```bash
-aws secretsmanager get-secret-value \
-  --region eu-west-1 \
-  --secret-id /lightsail/shared-postgres/elfico/app-user \
-  --query SecretString \
-  --output text
+```text
+/lightsail/shared-postgres/elfico/app-user
 ```
 
 `czyjafakturka`:
 
-```bash
-aws secretsmanager get-secret-value \
-  --region eu-west-1 \
-  --secret-id /lightsail/shared-postgres/czyjafakturka/app-user \
-  --query SecretString \
-  --output text
+```text
+/lightsail/shared-postgres/czyjafakturka/app-user
 ```
 
 Each secret contains:
@@ -203,7 +195,61 @@ Each secret contains:
 }
 ```
 
-Both apps use the same Lightsail database endpoint and port, but different database names and users.
+The current app deployment workflows start the Spring Boot JAR over SSH. In each app repository, update its deploy workflow to retrieve that app's secret and inject the connection settings into the Java process:
+
+```bash
+DB_SECRET_ID=/lightsail/shared-postgres/elfico/app-user # change for czyjafakturka
+
+DB_SECRET_JSON="$(aws secretsmanager get-secret-value \
+  --region eu-west-1 \
+  --secret-id "$DB_SECRET_ID" \
+  --query SecretString \
+  --output text)"
+
+DB_HOST="$(aws lightsail get-relational-database \
+  --region eu-west-1 \
+  --relational-database-name shared-postgres \
+  --query 'relationalDatabase.masterEndpoint.address' \
+  --output text)"
+DB_PORT="$(aws lightsail get-relational-database \
+  --region eu-west-1 \
+  --relational-database-name shared-postgres \
+  --query 'relationalDatabase.masterEndpoint.port' \
+  --output text)"
+DB_NAME="$(jq -r '.database' <<<"$DB_SECRET_JSON")"
+DB_USERNAME="$(jq -r '.username' <<<"$DB_SECRET_JSON")"
+DB_PASSWORD="$(jq -r '.password' <<<"$DB_SECRET_JSON")"
+DB_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+# Prevent accidental disclosure in subsequent GitHub Actions log output.
+echo "::add-mask::$DB_USERNAME"
+echo "::add-mask::$DB_PASSWORD"
+
+# Preserve special characters when values are passed through SSH.
+printf -v DB_URL_ESCAPED '%q' "$DB_URL"
+printf -v DB_USERNAME_ESCAPED '%q' "$DB_USERNAME"
+printf -v DB_PASSWORD_ESCAPED '%q' "$DB_PASSWORD"
+
+ssh ec2-user@"$INSTANCE_IP" <<EOF
+export SPRING_DATASOURCE_URL=$DB_URL_ESCAPED
+export SPRING_DATASOURCE_USERNAME=$DB_USERNAME_ESCAPED
+export SPRING_DATASOURCE_PASSWORD=$DB_PASSWORD_ESCAPED
+nohup java -Dspring.profiles.active=aws -jar /home/ec2-user/app.jar > /home/ec2-user/app.log 2>&1 &
+EOF
+```
+
+Use the actual JAR filename from the app's deployment workflow. Spring Boot maps these environment variables to `spring.datasource.url`, `spring.datasource.username`, and `spring.datasource.password`; no password belongs in the application configuration file.
+
+The AWS identity used by the app's deployment workflow needs:
+
+```text
+secretsmanager:GetSecretValue
+lightsail:GetRelationalDatabase
+```
+
+Restrict `secretsmanager:GetSecretValue` to that app's secret ARN. The app server does not need permission to read Secrets Manager because the deployment workflow retrieves the secret and passes it directly to the application process.
+
+Both apps use the same Lightsail database endpoint and port, but different database names, users, and passwords.
 
 ### 11. Create a snapshot
 
