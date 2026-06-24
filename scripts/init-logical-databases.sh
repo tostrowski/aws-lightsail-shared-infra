@@ -83,6 +83,11 @@ BEGIN
   ELSE
     EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', target_user, target_password);
   END IF;
+
+  -- PostgreSQL requires the creator to be able to SET ROLE to a database's
+  -- requested owner. Managed-service master users are not superusers, so make
+  -- that membership explicit before assigning database and schema ownership.
+  EXECUTE format('GRANT %I TO %I', target_user, current_user);
 END
 $$;
 

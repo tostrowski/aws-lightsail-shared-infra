@@ -1,0 +1,128 @@
+name: ♻️ Restore database snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_name:
+        description: "Existing Lightsail database snapshot name"
+        required: true
+        type: string
+      restored_database_name:
+        description: "Name for the new restored database; must differ from shared-postgres"
+        required: true
+        type: string
+      bundle_id:
+        description: "Database plan; cannot be smaller than the source snapshot plan"
+        required: true
+        default: "micro_2_0"
+        type: string
+      confirmation:
+        description: "Type RESTORE to create a new billable database"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: eu-west-1
+      AVAILABILITY_ZONE: eu-west-1a
+      ORIGINAL_DATABASE_NAME: shared-postgres
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Validate restore request
+        env:
+          SNAPSHOT_NAME: ${{ inputs.snapshot_name }}
+          RESTORED_DATABASE_NAME: ${{ inputs.restored_database_name }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [ "$CONFIRMATION" != "RESTORE" ]; then
+            echo "::error::Confirmation must be exactly RESTORE."
+            exit 1
+          fi
+
+          if [ "$RESTORED_DATABASE_NAME" = "$ORIGINAL_DATABASE_NAME" ]; then
+            echo "::error::Restore must use a new database name; it cannot replace $ORIGINAL_DATABASE_NAME in place."
+            exit 1
+          fi
+
+          snapshot_state="$(aws lightsail get-relational-database-snapshot \
+            --region "$AWS_REGION" \
+            --relational-database-snapshot-name "$SNAPSHOT_NAME" \
+            --query 'relationalDatabaseSnapshot.state' \
+            --output text)"
+
+          if [ "$snapshot_state" != "available" ]; then
+            echo "::error::Snapshot $SNAPSHOT_NAME is not available; current state: $snapshot_state."
+            exit 1
+          fi
+
+          if aws lightsail get-relational-database \
+            --region "$AWS_REGION" \
+            --relational-database-name "$RESTORED_DATABASE_NAME" \
+            >/dev/null 2>&1; then
+            echo "::error::A database named $RESTORED_DATABASE_NAME already exists."
+            exit 1
+          fi
+
+      - name: Restore snapshot to a new private database
+        env:
+          SNAPSHOT_NAME: ${{ inputs.snapshot_name }}
+          RESTORED_DATABASE_NAME: ${{ inputs.restored_database_name }}
+          BUNDLE_ID: ${{ inputs.bundle_id }}
+        run: |
+          aws lightsail create-relational-database-from-snapshot \
+            --region "$AWS_REGION" \
+            --relational-database-snapshot-name "$SNAPSHOT_NAME" \
+            --relational-database-name "$RESTORED_DATABASE_NAME" \
+            --availability-zone "$AVAILABILITY_ZONE" \
+            --relational-database-bundle-id "$BUNDLE_ID" \
+            --no-publicly-accessible
+
+      - name: Wait for restored database
+        env:
+          RESTORED_DATABASE_NAME: ${{ inputs.restored_database_name }}
+        run: |
+          for attempt in $(seq 1 60); do
+            state="$(aws lightsail get-relational-database \
+              --region "$AWS_REGION" \
+              --relational-database-name "$RESTORED_DATABASE_NAME" \
+              --query 'relationalDatabase.state' \
+              --output text 2>/dev/null || true)"
+
+            if [ -z "$state" ]; then
+              state="not-visible-yet"
+            fi
+
+            echo "Restore state: $state ($attempt/60)"
+
+            if [ "$state" = "available" ]; then
+              aws lightsail get-relational-database \
+                --region "$AWS_REGION" \
+                --relational-database-name "$RESTORED_DATABASE_NAME" \
+                --query 'relationalDatabase.{name:name,state:state,publiclyAccessible:publiclyAccessible,endpoint:masterEndpoint.address,port:masterEndpoint.port,bundleId:relationalDatabaseBundleId}' \
+                --output table
+              exit 0
+            fi
+
+            case "$state" in
+              failed|error)
+                echo "::error::Database restore failed with state: $state."
+                exit 1
+                ;;
+            esac
+
+            sleep 30
+          done
+
+          echo "::error::Timed out after 30 minutes. Check the restored database in Lightsail."
+          exit 1

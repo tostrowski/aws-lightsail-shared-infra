@@ -22,6 +22,7 @@ Java + Gradle AWS CDK project for one shared Lightsail PostgreSQL database in AW
 - `🔐 Set database access`: manually toggles public/private access.
 - `🔎 Database status`: prints current Lightsail DB status.
 - `📸 Create database snapshot`: creates a manual database snapshot.
+- `♻️ Restore database snapshot`: creates a new private database from a manual snapshot.
 
 To run any workflow, open the repository in GitHub, select **Actions**, select the named workflow in the left sidebar, select **Run workflow**, choose the required inputs, and confirm with **Run workflow**.
 
@@ -275,6 +276,85 @@ Wait until the snapshot is available before starting the risky operation. Creati
 A snapshot is a recovery measure, not a substitute for testing migrations or maintaining an appropriate recurring backup and retention policy.
 
 After that, deploy each app's own schema migrations from its app repository.
+
+### 12. Restore from a snapshot
+
+Restoring does not modify or roll back `shared-postgres`. Lightsail creates a separate database with a new resource name and endpoint. The original database remains available, and both databases are billed until one is deleted.
+
+Use a restore when the current database cannot be repaired safely—for example, after a destructive migration or accidental data deletion:
+
+1. Stop application writes to `shared-postgres` so that no additional data is created during recovery.
+2. Identify the snapshot to restore in **AWS Lightsail → Databases → Snapshots**, or list snapshots with:
+
+   ```bash
+   aws lightsail get-relational-database-snapshots \
+     --region eu-west-1 \
+     --query 'relationalDatabaseSnapshots[].{name:name,state:state,createdAt:createdAt,source:fromRelationalDatabaseName}' \
+     --output table
+   ```
+
+3. Run the GitHub Actions workflow `♻️ Restore database snapshot`: open **GitHub → Actions → ♻️ Restore database snapshot**, select **Run workflow**, and provide:
+
+   - `snapshot_name`: the exact name of an `available` snapshot
+   - `restored_database_name`: a new name, such as `shared-postgres-restored-20260624`
+   - `bundle_id`: keep `micro_2_0`, or choose a larger compatible plan; Lightsail does not allow a plan smaller than the snapshot's source plan
+   - `confirmation`: enter `RESTORE`
+
+4. Wait for the workflow to report the restored database as `available`. The workflow creates it in `eu-west-1a` with public access disabled and prints its new endpoint.
+5. Verify the restored data before directing production traffic to it. The snapshot contains the database users and passwords that existed when it was created. The existing Secrets Manager values will work only if they still match those snapshot credentials.
+6. Point each application at the restored database. Do this in both the `elfico` and `czyjafakturka` repositories:
+
+   - Open **GitHub → repository → Settings → Environments → production → Environment variables**.
+   - Create or update `LIGHTSAIL_DB_NAME` with the restored resource name, for example:
+
+     ```text
+     shared-postgres-restored-20260624
+     ```
+
+   - In `.github/workflows/deploy-app.yml`, add `LIGHTSAIL_DB_NAME` to the existing `env` block of the step that retrieves the database endpoint:
+
+     ```yaml
+     - name: Start New Application
+       env:
+         LIGHTSAIL_DB_NAME: ${{ vars.LIGHTSAIL_DB_NAME }}
+       run: |
+         if [ -z "$LIGHTSAIL_DB_NAME" ]; then
+           echo "::error::LIGHTSAIL_DB_NAME is not configured."
+           exit 1
+         fi
+
+         DB_HOST="$(aws lightsail get-relational-database \
+           --region eu-west-1 \
+           --relational-database-name "$LIGHTSAIL_DB_NAME" \
+           --query 'relationalDatabase.masterEndpoint.address' \
+           --output text)"
+         DB_PORT="$(aws lightsail get-relational-database \
+           --region eu-west-1 \
+           --relational-database-name "$LIGHTSAIL_DB_NAME" \
+           --query 'relationalDatabase.masterEndpoint.port' \
+           --output text)"
+
+         # Continue with the app-specific secret lookup from section 10.
+         DB_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+     ```
+
+   - Pass `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` through SSH as shown in section 10 and start the JAR with:
+
+     ```bash
+     export SPRING_DATASOURCE_URL="$DB_URL"
+     export SPRING_DATASOURCE_USERNAME="$DB_USERNAME"
+     export SPRING_DATASOURCE_PASSWORD="$DB_PASSWORD"
+     ```
+
+   `LIGHTSAIL_DB_NAME` is a GitHub environment variable, not a secret. It selects the Lightsail resource whose endpoint is used. Keep the password in the app-specific Secrets Manager secret.
+
+   After changing the variable, run the GitHub Actions workflow `🚀 Deploy App` in the `elfico` repository and then in the `czyjafakturka` repository: open **GitHub → Actions → 🚀 Deploy App**, select **Run workflow**, and confirm with **Run workflow**. The redeployed processes will resolve the restored database's endpoint and connect to it.
+
+   To roll back the cutover, set `LIGHTSAIL_DB_NAME` back to `shared-postgres` in both repositories and run each repository's `🚀 Deploy App` workflow again.
+
+7. Confirm both applications can read and write the restored database before resuming traffic.
+
+Do not delete `shared-postgres` immediately. Keep it until the restored database has been validated and the required recovery data is confirmed. The restored database is created outside the CDK stack, so subsequent CDK deployments continue to manage `shared-postgres`, not the restored resource. Decide separately whether to retain the restored database temporarily, promote it through an application configuration change, or migrate its recovered data back into the CDK-managed database.
 
 ## Local Commands
 
