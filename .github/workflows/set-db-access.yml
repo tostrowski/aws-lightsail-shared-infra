@@ -33,8 +33,23 @@ jobs:
         run: |
           if [ "${{ inputs.mode }}" = "public" ]; then
             access_flag="--publicly-accessible"
+            target_publicly_accessible="True"
+            target_label="public"
           else
             access_flag="--no-publicly-accessible"
+            target_publicly_accessible="False"
+            target_label="private"
+          fi
+
+          current_publicly_accessible="$(aws lightsail get-relational-database \
+            --region "$AWS_REGION" \
+            --relational-database-name "$LIGHTSAIL_DB_NAME" \
+            --query 'relationalDatabase.publiclyAccessible' \
+            --output text)"
+
+          if [ "$current_publicly_accessible" = "$target_publicly_accessible" ]; then
+            echo "Database '$LIGHTSAIL_DB_NAME' is already $target_label."
+            exit 0
           fi
 
           aws lightsail update-relational-database \
